@@ -37,6 +37,7 @@ class CommandDispatcher(object):
             command = args[0][len(bot_command_char):]
         else:
             command = args[0]
+
         try:
             func = self.commands[command]
         except KeyError:
@@ -49,12 +50,9 @@ class CommandDispatcher(object):
                 if self.unknown_command:
                     func = self.unknown_command
                 else:
-                    raise NoCommandFoundError(
-                        "Command {} is not registered. Furthermore, no command found to handle unknown commands.".format
-                        (command))
+                    log.error("Command {} is not registered. Furthermore, no command found to handle unknown commands.".format(command))
 
         func = asyncio.coroutine(func)
-
         args = list(args[1:])
 
         # For help cases.
@@ -66,11 +64,9 @@ class CommandDispatcher(object):
         try:
             asyncio.async(func(bot, event, *args, **kwds))
         except Exception as e:
-            log = open('log.txt', 'a+')
-            log.writelines(str(datetime.now()) + ":\n " + traceback.format_exc() + "\n\n")
-            log.close()
-            print(traceback.format_exc())
-
+            log.error(traceback.format_exc())
+ 
+ 
     def register_aliases(self, aliases=None):
         """Registers a command under the function name & any names specified in aliases.
         """
@@ -82,6 +78,7 @@ class CommandDispatcher(object):
             return func
 
         return func_wrapper
+
 
     def register_extras(self, is_hidden=False, aliases=None, on_connect_listener=None):
         """Registers a function as hidden with aliases, or any combination of that."""
@@ -105,22 +102,27 @@ class CommandDispatcher(object):
 
         return func_wrapper
 
+
     def register(self, func):
         """Decorator for registering command"""
         self.commands[func.__name__] = func
         return func
+
 
     def register_hidden(self, func):
         """Registers a command as hidden (This makes it only runnable by the Bot and it won't appear in the help menu)"""
         self.hidden_commands[func.__name__] = func
         return func
 
+
     def register_unknown(self, func):
         self.unknown_command = func
         return func
 
+
     def register_on_connect_listener(self, func):
         self.on_connect_listeners.append(func)
+
 
 # CommandDispatcher singleton
 DispatcherSingleton = CommandDispatcher()

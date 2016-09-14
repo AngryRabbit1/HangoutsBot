@@ -1,32 +1,17 @@
-import asyncio
-from datetime import timedelta, datetime
 from fractions import Fraction
-import glob
 import json
-import os
 import random
-import threading
 from urllib import parse, request
 from bs4 import BeautifulSoup
-from dateutil import parser
-import dateutil
 import hangups
-import re
 import requests
-import parsedatetime
+import logging
+import re
 from Core.Commands.Dispatcher import DispatcherSingleton
 from Core.Util import UtilBot
-from Libraries import Genius
-
-currently_running_reminders = []
 
 
-@DispatcherSingleton.register
-def count(bot, event, *args):
-    words = ' '.join(args)
-    count = UtilBot.syllable_count(words)
-    bot.send_message(event.conv,
-                     '"' + words + '"' + " has " + str(count) + (' syllable.' if count == 1 else ' syllables.'))
+log = logging.getLogger(__name__)
 
 
 @DispatcherSingleton.register
@@ -81,327 +66,6 @@ def udefine(bot, event, *args):
                             hangups.ChatMessageSegment(result + ' [{0} of {1}]'.format(
                                 num_requested + 1, len(result_list)))]
                 bot.send_message_segments(event.conv, segments)
-
-
-# Function for sending reminders to a chat.
-def send_reminder(bot, conv, reminder_time, reminder_text, loop):
-    asyncio.set_event_loop(loop)
-    bot.send_message(conv, "Reminder: " + reminder_text)
-    UtilBot.delete_reminder(conv.id_, reminder_text, reminder_time)
-
-
-def _reminder_on_connect_listener(bot):
-    reminders = UtilBot.get_all_reminders()
-    for reminder in reminders:
-        reminder_time = dateutil.parser.parse(reminder[2])
-        reminder_interval = (reminder_time - datetime.now()).seconds
-        conv = bot._conv_list.get(reminder[0])
-        reminder_timer = threading.Timer(reminder_interval, send_reminder,
-                                         [bot, conv, reminder_interval, reminder[1], asyncio.get_event_loop()])
-        reminder_timer.start()
-
-
-@DispatcherSingleton.register_extras(on_connect_listener=_reminder_on_connect_listener)
-def remind(bot, event, *args):
-    # TODO Implement a private chat feature. Have reminders save across reboots?
-    """
-    **Remind:**
-    Usage: /remind <optional: date [defaults to today]> <optional: time [defaults to an hour from now]> <message> {/remind 1/1/15 2:00PM Call mom}
-    Usage: /remind
-    Usage /remind delete <index to delete> {/remind delete 1}
-    Purpose: Will post a message on the date and time specified to the current chat. With no arguments, it'll list all the reminders."""
-
-    # Show all reminders
-    if len(args) == 0:
-        segments = [hangups.ChatMessageSegment('Reminders:', is_bold=True),
-                    hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK)]
-        reminders = UtilBot.get_all_reminders(event.conv_id)
-        if len(reminders) > 0:
-            for x in range(0, len(reminders)):
-                reminder = reminders[x]
-                reminder_text = reminder[1]
-                date_to_post = dateutil.parser.parse(reminder[2])
-                segments.append(
-                    hangups.ChatMessageSegment(
-                        str(x + 1) + ' - ' + date_to_post.strftime('%m/%d/%y %I:%M%p') + ' : ' + reminder_text))
-                segments.append(hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK))
-            segments.pop()
-            bot.send_message_segments(event.conv, segments)
-        if len(segments) <= 2:
-            bot.send_message(event.conv, "No reminders set for this chat.")
-        return
-
-    # Delete a reminder
-    if args[0] == 'delete':
-        try:
-            x = int(args[1])
-            x -= 1
-        except ValueError:
-            bot.send_message(event.conv, 'Invalid integer: ' + args[1])
-            return
-        reminders = UtilBot.get_all_reminders(event.conv_id)
-        reminder_to_delete_text = None
-        if x in range(0, len(reminders)):
-            to_delete_reminder = reminders[x]
-            for running_reminder in currently_running_reminders:
-                if running_reminder[1] == to_delete_reminder:
-                    running_reminder[0].cancel()
-        if reminder_to_delete_text:
-            bot.send_message(event.conv, 'Removed reminder: ' + str(reminder_to_delete_text))
-        else:
-            bot.send_message(event.conv, 'The reminder chosen is not currently running.')
-        return
-
-    # Set a new reminder
-    args = list(args)
-    reminder_text = ' '.join(args)
-    c = parsedatetime.Calendar()
-    result = c.nlp(reminder_text)
-    if result is None:
-        bot.send_message(event.conv, "Couldn't parse a valid date from {}'s message.".format(event.user.full_name))
-        return
-    reminder_time = result[0][0]
-    reminder_text = reminder_text.replace(result[0][-1], '')
-    if reminder_text.strip() == '':
-        bot.send_message(event.conv, 'No reminder text set.')
-        return
-
-    current_time = datetime.now()
-    if reminder_time < current_time:
-        bot.send_message("Invalid Date: {}".format(reminder_time.strftime('%B %d, %Y %I:%M%p')))
-
-    reminder_interval = (reminder_time - current_time).total_seconds()
-
-    reminder_timer = threading.Timer(reminder_interval, send_reminder,
-                                     [bot, event.conv, reminder_interval, reminder_text, asyncio.get_event_loop()])
-    UtilBot.add_reminder(event.conv_id, reminder_text, reminder_time)
-    reminder_timer.start()
-    currently_running_reminders.append((reminder_timer, (event.conv_id, reminder_text, reminder_time)))
-    bot.send_message(event.conv, "Reminder set for " + reminder_time.strftime('%B %d, %Y %I:%M%p'))
-
-
-@DispatcherSingleton.register
-def finish(bot, event, *args):
-    if ''.join(args) == '?':
-        segments = [hangups.ChatMessageSegment('Finish', is_bold=True),
-                    hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
-                    hangups.ChatMessageSegment(
-                        'Usage: /finish <lyrics to finish> <optional: * symbol to show guessed song>'),
-                    hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
-                    hangups.ChatMessageSegment('Purpose: Finish a lyric!')]
-        bot.send_message_segments(event.conv, segments)
-    else:
-        showguess = False
-        if args[-1] == '*':
-            showguess = True
-            args = args[0:-1]
-        lyric = ' '.join(args)
-        songs = Genius.search_songs(lyric)
-
-        if len(songs) < 1:
-            bot.send_message(event.conv, "I couldn't find your lyrics.")
-        lyrics = songs[0].raw_lyrics
-        anchors = {}
-
-        lyrics = lyrics.split('\n')
-        currmin = (0, UtilBot.levenshtein_distance(lyrics[0], lyric)[0])
-        for x in range(1, len(lyrics) - 1):
-            try:
-                currlyric = lyrics[x]
-                if not currlyric.isspace():
-                    # Returns the distance and whether or not the lyric had to be chopped to compare
-                    result = UtilBot.levenshtein_distance(currlyric, lyric)
-                else:
-                    continue
-                distance = abs(result[0])
-                lyrics[x] = lyrics[x], result[1]
-
-                if currmin[1] > distance:
-                    currmin = (x, distance)
-                if currlyric.startswith('[') and currlyric not in anchors:
-                    next = UtilBot.find_next_non_blank(lyrics, x)
-                    anchors[currlyric] = lyrics[next]
-            except Exception:
-                pass
-        next = UtilBot.find_next_non_blank(lyrics, currmin[0])
-        chopped = lyrics[currmin[0]][1]
-        found_lyric = lyrics[currmin[0]][0] + " " + lyrics[next][0] if chopped else lyrics[next][0]
-        if found_lyric.startswith('['):
-            found_lyric = anchors[found_lyric]
-        if showguess:
-            segments = [hangups.ChatMessageSegment(found_lyric),
-                        hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
-                        hangups.ChatMessageSegment(songs[0].name)]
-            bot.send_message_segments(event.conv, segments)
-        else:
-            bot.send_message(event.conv, found_lyric)
-
-        return
-
-
-@DispatcherSingleton.register
-def record(bot, event, *args):
-    """
-    **Record:**
-    Usage: /record <text to record>
-    Usage: /record date <date to show records from>
-    Usage: /record list
-    Usage: /record search <search term>
-    Usage: /record strike
-    Usage: /record
-    Purpose: Store/Show records of conversations. Note: All records will be prepended by: "On the day of <date>," automatically.
-    """
-
-    import datetime
-
-    directory = "Records" + os.sep + str(event.conv_id)
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-    filename = str(datetime.date.today()) + ".txt"
-    filepath = os.path.join(directory, filename)
-    file = None
-
-    # Deletes the record for the day.
-    if ''.join(args) == "clear":
-        file = open(filepath, "a+")
-        file.seek(0)
-        file.truncate()
-
-    # Shows the record for the day.
-    elif ''.join(args) == '':
-        file = open(filepath, "a+")
-        # If the mode is r+, it won't create the file. If it's a+, I have to seek to the beginning.
-        file.seek(0)
-        segments = [hangups.ChatMessageSegment(
-            'On the day of ' + datetime.date.today().strftime('%B %d, %Y') + ':', is_bold=True),
-            hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK)]
-        for line in file:
-            segments.append(
-                hangups.ChatMessageSegment(line))
-            segments.append(hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK))
-            segments.append(hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK))
-        bot.send_message_segments(event.conv, segments)
-
-    # Removes the last line recorded, iff the user striking is the same as the person who recorded last.
-    elif args[0] == "strike":
-        last_recorder = UtilBot.get_last_recorder(event.conv_id)
-        last_recorded = UtilBot.get_last_recorded(event.conv_id)
-        if event.user.id_ == last_recorder:
-            file = open(filepath, "a+")
-            file.seek(0)
-            file_lines = file.readlines()
-            if last_recorded is not None and last_recorded in file_lines:
-                file_lines.remove(last_recorded)
-            file.seek(0)
-            file.truncate()
-            file.writelines(file_lines)
-            UtilBot.set_last_recorded(event.conv_id, None)
-            UtilBot.set_last_recorder(event.conv_id, None)
-        else:
-            bot.send_message(event.conv, "You do not have the authority to strike from the Record.")
-
-    # Lists every record available. TODO Paginate this?
-    elif args[0] == "list":
-        files = os.listdir(directory)
-        segments = []
-        for name in files:
-            segments.append(hangups.ChatMessageSegment(name.replace(".txt", "")))
-            segments.append(hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK))
-        bot.send_message_segments(event.conv, segments)
-
-    # Shows a list of records that match the search criteria.
-    elif args[0] == "search":
-        args = args[1:]
-        searched_term = ' '.join(args)
-        escaped_args = []
-        for item in args:
-            escaped_args.append(re.escape(item))
-        term = '.*'.join(escaped_args)
-        term = term.replace(' ', '.*')
-        if len(args) > 1:
-            term = '.*' + term
-        else:
-            term = '.*' + term + '.*'
-        foundin = []
-        for name in glob.glob(directory + os.sep + '*.txt'):
-            with open(name) as f:
-                contents = f.read()
-            if re.match(term, contents, re.IGNORECASE | re.DOTALL):
-                foundin.append(name.replace(directory, "").replace(".txt", "").replace("\\", ""))
-        if len(foundin) > 0:
-            segments = [hangups.ChatMessageSegment("Found "),
-                        hangups.ChatMessageSegment(searched_term, is_bold=True),
-                        hangups.ChatMessageSegment(" in:"),
-                        hangups.ChatMessageSegment("\n", hangups.SegmentType.LINE_BREAK)]
-            for filename in foundin:
-                segments.append(hangups.ChatMessageSegment(filename))
-                segments.append(hangups.ChatMessageSegment("\n", hangups.SegmentType.LINE_BREAK))
-            bot.send_message_segments(event.conv, segments)
-        else:
-            segments = [hangups.ChatMessageSegment("Couldn't find  "),
-                        hangups.ChatMessageSegment(searched_term, is_bold=True),
-                        hangups.ChatMessageSegment(" in any records.")]
-            bot.send_message_segments(event.conv, segments)
-
-    # Lists a record from the specified date.
-    elif args[0] == "date":
-        from dateutil import parser
-
-        args = args[1:]
-        try:
-            dt = parser.parse(' '.join(args))
-        except Exception as e:
-            bot.send_message(event.conv, "Couldn't parse " + ' '.join(args) + " as a valid date.")
-            return
-        filename = str(dt.date()) + ".txt"
-        filepath = os.path.join(directory, filename)
-        try:
-            file = open(filepath, "r")
-        except IOError:
-            bot.send_message(event.conv, "No record for the day of " + dt.strftime('%B %d, %Y') + '.')
-            return
-        segments = [hangups.ChatMessageSegment('On the day of ' + dt.strftime('%B %d, %Y') + ':', is_bold=True),
-                    hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK)]
-        for line in file:
-            segments.append(hangups.ChatMessageSegment(line))
-            segments.append(hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK))
-            segments.append(hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK))
-        bot.send_message_segments(event.conv, segments)
-
-    # Saves a record.
-    else:
-        file = open(filepath, "a+")
-        file.write(' '.join(args) + '\n')
-        bot.send_message(event.conv, "Record saved successfully.")
-        UtilBot.set_last_recorder(event.conv_id, event.user.id_)
-        UtilBot.set_last_recorded(event.conv_id, ' '.join(args) + '\n')
-    if file is not None:
-        file.close()
-
-
-@DispatcherSingleton.register
-def trash(bot, event, *args):
-    bot.send_message(event.conv, "🚮")
-
-
-@DispatcherSingleton.register
-def spoof(bot, event, *args):
-    if ''.join(args) == '?':
-        segments = [hangups.ChatMessageSegment('Spoof', is_bold=True),
-                    hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
-                    hangups.ChatMessageSegment('Usage: /spoof'),
-                    hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
-                    hangups.ChatMessageSegment('Purpose: Who knows...')]
-        bot.send_message_segments(event.conv, segments)
-    else:
-        segments = [hangups.ChatMessageSegment('!!! CAUTION !!!', is_bold=True),
-                    hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
-                    hangups.ChatMessageSegment('User ')]
-        link = 'https://plus.google.com/u/0/{}/about'.format(event.user.id_.chat_id)
-        segments.append(hangups.ChatMessageSegment(event.user.full_name, hangups.SegmentType.LINK,
-                                                   link_target=link))
-        segments.append(hangups.ChatMessageSegment(' has just been reporting to the NSA for attempted spoofing!'))
-        bot.send_message_segments(event.conv, segments)
 
 
 @DispatcherSingleton.register
@@ -474,3 +138,186 @@ def quote(bot, event, *args):
                 fetch) + ' of ' + str(numQuotes) + ']')
         else:
             bot.send_message(event.conv, "\"" + soup.quote.text + "\"" + ' -' + soup.author.text)
+
+
+@DispatcherSingleton.register
+def define(bot, event, *args):
+    """
+    **Define:**
+    Usage: /define <word to search for> <optional: definition number [defaults to 1] OR * to show all definitions>
+    Usage: /define <word to search for> <start index and end index in form of int:int (e.g., /define test 1:3)>
+    Purpose: Show definitions for a word.
+    """
+    if args[-1].isdigit():
+        definition, length = UtilBot.define(' '.join(args[0:-1]), num=int(args[-1]))
+        segments = [hangups.ChatMessageSegment(' '.join(args[0:-1]).title(), is_bold=True),
+                    hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
+                    hangups.ChatMessageSegment(
+                        definition.replace('\n', ''))]
+        bot.send_message_segments(event.conv, segments)
+    elif args[-1] == '*':
+        args = list(args)
+        args[-1] = '1:*'
+    if ':' in args[-1]:
+        start, end = re.split(':', args[-1])
+        try:
+            start = int(start)
+        except ValueError:
+            start = 1
+        display_all = False
+        if end == '*':
+            end = 100
+            display_all = True
+        else:
+            try:
+                end = int(end)
+            except ValueError:
+                end = 3
+        if start < 1:
+            start = 1
+        if start > end:
+            end, start = start, end
+        if start == end:
+            end += 1
+        if len(args) <= 1:
+            bot.send_message(event.conv, "Invalid usage for /define.")
+            return
+        query = ' '.join(args[:-1])
+        definition_segments = [hangups.ChatMessageSegment(query.title(), is_bold=True),
+                               hangups.ChatMessageSegment('', segment_type=hangups.SegmentType.LINE_BREAK)]
+        if start < end:
+            x = start
+            while x <= end:
+                definition, length = UtilBot.define(query, num=x)
+                definition_segments.append(hangups.ChatMessageSegment(definition))
+                if x != end:
+                    definition_segments.append(
+                        hangups.ChatMessageSegment('', segment_type=hangups.SegmentType.LINE_BREAK))
+                    definition_segments.append(
+                        hangups.ChatMessageSegment('', segment_type=hangups.SegmentType.LINE_BREAK))
+                if end > length:
+                    end = length
+                if display_all:
+                    end = length
+                    display_all = False
+                x += 1
+            bot.send_message_segments(event.conv, definition_segments)
+        return
+    else:
+        args = list(args)
+        args.append("1:3")
+        define(bot, event, *args)
+        return
+
+
+@DispatcherSingleton.register
+def vote(bot, event, set_vote=None, *args):
+    """**Vote:**
+    Usage: /vote <subject to vote on>
+    Usage: /vote <yea|yes|for|nay|no|against (used to cast a vote)>
+    Usage: /vote cancel
+    Usage: /vote abstain
+    Usage: /vote start <subject to vote on>
+    Usage: /vote start admin (used to start a vote for a new conversation admin)
+    """
+
+    # Abstains user from voting.
+    if set_vote is not None and set_vote.lower() == 'abstain':
+        if UtilBot.is_vote_started(event.conv_id):
+            bot.send_message(event.conv, 'User {} has abstained from voting.'.format(event.user.full_name))
+            if UtilBot.abstain_voter(event.conv_id, event.user.full_name):
+                bot.send_message(event.conv, "The vote has ended because all voters have abstained.")
+                return
+        else:
+            bot.send_message(event.conv, 'No vote currently in process to abstain from.')
+            return
+
+        # Check if the vote has ended
+        vote_result = UtilBot.check_if_vote_finished(event.conv_id)
+        if vote_result is not None:
+            if vote_result != 0:
+                bot.send_message(event.conv,
+                                 'In the matter of: "' + UtilBot.get_vote_subject(event.conv_id) + '", the ' + (
+                                     'Yeas' if vote_result > 0 else 'Nays') + ' have it.')
+            else:
+                bot.send_message(event.conv, "The vote ended in a tie in the matter of: {}".format(
+                    UtilBot.get_vote_subject(event.conv_id)))
+            UtilBot.end_vote(event.conv_id)
+        return
+
+    # Cancels the vote
+    if set_vote is not None and set_vote.lower() == "cancel":
+        if UtilBot.is_vote_started(event.conv_id):
+            bot.send_message(event.conv, 'Vote "{}" cancelled.'.format(UtilBot.get_vote_subject(event.conv_id)))
+            UtilBot.end_vote(event.conv_id)
+        else:
+            bot.send_message(event.conv, 'No vote currently started.')
+        return
+
+    # Starts a new vote
+    if not UtilBot.is_vote_started(event.conv_id) and set_vote == "start":
+        vote_subject = ' '.join(args)
+        vote_callback = None
+
+        # TODO Refactor this into a more easily extensible system.
+        if vote_subject.lower().strip() == "admin":  # For the special Conversation Admin case.
+
+            vote_subject = '{} for Conversation Admin for chat {}'.format(event.user.full_name,
+                                                                          get_conv_name(event.conv))
+
+            def set_conv_admin(won):
+                if won:
+                    try:
+                        bot.config["conversations"][event.conv_id]["conversation_admin"] = event.user.id_[0]
+                    except (KeyError, TypeError):
+                        bot.config["conversations"][event.conv_id] = {}
+                        bot.config["conversations"][event.conv_id]["admin"] = event.user.id_[0]
+                    bot.config.save()
+
+            vote_callback = set_conv_admin
+
+        UtilBot.set_vote_subject(event.conv_id, vote_subject)
+        UtilBot.init_new_vote(event.conv_id, event.conv.users)
+        if vote_callback is not None:
+            UtilBot.set_vote_callback(event.conv_id, vote_callback)
+        bot.send_message(event.conv, "Vote started for subject: " + vote_subject)
+        return
+
+    # Cast a vote.
+    if set_vote is not None and UtilBot.is_vote_started(event.conv_id):
+        if UtilBot.can_user_vote(event.conv_id, event.user):
+            set_vote = set_vote.lower()
+            if set_vote == "true" or set_vote == "yes" or set_vote == "yea" or set_vote == "for" or set_vote == "yay" or set_vote == "aye":
+                UtilBot.set_vote(event.conv_id, event.user.full_name, True)
+            elif set_vote == "false" or set_vote == "no" or set_vote == "nay" or set_vote == "against":
+                UtilBot.set_vote(event.conv_id, event.user.full_name, False)
+            else:
+                bot.send_message(event.conv,
+                                 "{}, you did not enter a valid vote parameter.".format(event.user.full_name))
+                return
+
+            # Check if the vote has ended
+            vote_result = UtilBot.check_if_vote_finished(event.conv_id)
+            if vote_result is not None:
+                if vote_result != 0:
+                    bot.send_message(event.conv,
+                                     'In the matter of: "' + UtilBot.get_vote_subject(event.conv_id) + '", the ' + (
+                                         'Yeas' if vote_result > 0 else 'Nays') + ' have it.')
+                else:
+                    bot.send_message(event.conv, "The vote ended in a tie in the matter of: {}".format(
+                        UtilBot.get_vote_subject(event.conv_id)))
+                UtilBot.end_vote(event.conv_id, vote_result)
+            return
+        else:
+            bot.send_message(event.conv_id, 'User {} is not allowed to vote.'.format(event.user.full_name))
+            return
+
+    # Check the status of a vote.
+    if UtilBot.is_vote_started(event.conv_id):
+        status = UtilBot.get_vote_status(event.conv_id)
+        if len(status) > 1:
+            bot.send_message_segments(event.conv, UtilBot.text_to_segments('\n'.join(status)))
+        else:
+            bot.send_message(event.conv, "No vote currently started.")
+    else:
+        bot.send_message(event.conv, "No vote currently started.")

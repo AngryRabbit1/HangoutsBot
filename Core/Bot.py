@@ -9,14 +9,15 @@ import tempfile
 import time
 import signal
 import traceback
+import logging
 from urllib import request
 from urllib.request import FancyURLopener
 
 import hangups
 from hangups.ui.utils import get_conv_name
 from requests import HTTPError
-from Core.Commands.Dispatcher import DispatcherSingleton
 
+from Core.Commands.Dispatcher import DispatcherSingleton
 from Core.Util import ConfigDict, UtilDB
 from Core import Handlers
 
@@ -25,10 +26,9 @@ class HangoutsBotOpener(FancyURLopener):
     version = 'Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2049.0 Safari/537.36'
 
 
-request.urlretrieve = HangoutsBotOpener().retrieve
-
 __version__ = '1.1'
-LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+request.urlretrieve = HangoutsBotOpener().retrieve
+log = logging.getLogger(__name__)
 
 
 class ConversationEvent(object):
@@ -41,14 +41,15 @@ class ConversationEvent(object):
         self.timestamp = conv_event.timestamp
         self.text = conv_event.text.strip() if isinstance(conv_event, hangups.ChatMessageEvent) else ''
 
+
     def print_debug(self):
-        print('Conversation ID: {}'.format(self.conv_id))
-        print('Conversation name: {}'.format(get_conv_name(self.conv, truncate=True)))
-        print('User ID: {}'.format(self.user_id))
-        print('User name: {}'.format(self.user.full_name))
-        print('Timestamp: {}'.format(self.timestamp.astimezone(tz=None).strftime('%Y-%m-%d %H:%M:%S')))
-        print('Text: {}'.format(self.text))
-        print()
+        log.info('Conversation ID: {}'.format(self.conv_id))
+        log.info('Conversation name: {}'.format(get_conv_name(self.conv, truncate=True)))
+        log.info('User ID: {}'.format(self.user_id))
+        log.info('User name: {}'.format(self.user.full_name))
+        log.info('Timestamp: {}'.format(self.timestamp.astimezone(tz=None).strftime('%Y-%m-%d %H:%M:%S')))
+        log.info('Text: {}'.format(self.text))
+        log.info()
 
 
 class HangoutsBot(object):
@@ -61,9 +62,9 @@ class HangoutsBot(object):
         self._command_char = command_char
 
         # These are populated by on_connect when it's called.
-        self._conv_list = None  # hangups.ConversationList
-        self._user_list = None  # hangups.UserList
-        self._message_handler = None  # MessageHandler
+        self._conv_list = None  #  hangups.ConversationList
+        self._user_list = None  #  hangups.UserList
+        self._message_handler = None  #  MessageHandler
 
         # Load config file
         self.config = ConfigDict.ConfigDict(config_path)
@@ -81,9 +82,11 @@ class HangoutsBot(object):
         except NotImplementedError:
             pass
 
+
     def restart(self):
         self.stop()
         self.run()
+
 
     def login(self, cookies_path):
         """Login to Google account"""
@@ -93,8 +96,9 @@ class HangoutsBot(object):
             cookies = hangups.auth.get_auth_stdin(cookies_path)
             return cookies
         except hangups.GoogleAuthError as e:
-            print('Login failed ({})'.format(e))
+            log.error('Login failed ({})'.format(e))
             return False
+
 
     def run(self):
         """Connect to Hangouts and run bot"""
@@ -113,14 +117,15 @@ class HangoutsBot(object):
                     loop.run_until_complete(self._client.connect())
                     sys.exit(0)
                 except Exception as e:
-                    print('Client unexpectedly disconnected:\n{}'.format(e))
+                    log.info('Client unexpectedly disconnected:\n{}'.format(e))
                     log = open('log.txt', 'a+')
                     log.writelines(str(datetime.now()) + ":\n " + traceback.format_exc() + "\n\n")
                     log.close()
-                    print(traceback.format_exc())
+                    log.info(traceback.format_exc())
                     time.sleep(10)
-            print('Maximum number of retries reached! Exiting...')
+            log.info('Maximum number of retries reached! Exiting...')
         sys.exit(1)
+
 
     def stop(self):
         """Disconnect from Hangouts"""
@@ -128,10 +133,12 @@ class HangoutsBot(object):
             self._client.disconnect()
         ).add_done_callback(lambda future: future.result())
 
+
     def handle_chat_message(self, conv_event):
         """Handle chat messages"""
         event = ConversationEvent(self, conv_event)
         asyncio.async(self._message_handler.handle(event))
+
 
     def handle_membership_change(self, conv_event):
         """Handle conversation membership change"""
@@ -155,13 +162,11 @@ class HangoutsBot(object):
             # Test if user who added new participants is admin
             admins_list = self.get_config_suboption(event.conv_id, 'admins')
             if event.user_id.chat_id in admins_list:
-                self.send_message(event.conv,
-                                  '{}: Hello and welcome!'.format(names))
+                self.send_message(event.conv, '{}: Hello and welcome!'.format(names))
             else:
                 segments = [hangups.ChatMessageSegment('!!! CAUTION !!!', is_bold=True),
                             hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
-                            hangups.ChatMessageSegment('{} has illegally added {} to this hangout!'.format(
-                                event.user.full_name, names)),
+                            hangups.ChatMessageSegment('{} has illegally added {} to this hangout!'.format(event.user.full_name, names)),
                             hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
                             hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
                             hangups.ChatMessageSegment('{}: Please leave this Hangout immediately!'.format(names))]
@@ -169,6 +174,7 @@ class HangoutsBot(object):
         # LEAVE
         else:
             self.send_message(event.conv, 'Goodbye, {}.'.format(names))
+
 
     def handle_rename(self, conv_event):
         """Handle conversation rename"""
@@ -197,12 +203,15 @@ class HangoutsBot(object):
                 file = open(directory + os.sep + filename, "a+")
                 file.write(text + '\n')
 
+
     def send_message(self, conversation, text):
         """"Send simple chat message"""
         self.send_message_segments(conversation, [hangups.ChatMessageSegment(text)])
 
+
     def send_message_segments(self, conversation, segments, image_id=None):
         """Send chat message segments"""
+        
         # Ignore if the user hasn't typed a message.
         if len(segments) == 0:
             return
@@ -211,6 +220,7 @@ class HangoutsBot(object):
         asyncio.async(
             conversation.send_message(segments, image_id=image_id)
         ).add_done_callback(self._on_message_sent)
+
 
     @asyncio.coroutine
     def upload_image(self, url, filename=None, delete=False):
@@ -234,11 +244,13 @@ class HangoutsBot(object):
             os.remove(filename)
         return image_id
 
+
     def list_conversations(self):
         """List all active conversations"""
         convs = sorted(self._conv_list.get_all(),
                        reverse=True, key=lambda c: c.last_modified)
         return convs
+
 
     def get_config_suboption(self, conv_id, option):
         """Get config suboption for conversation (or global option if not defined)"""
@@ -257,16 +269,18 @@ class HangoutsBot(object):
             suboption = None
         return suboption
 
+
     def _on_message_sent(self, future):
         """Handle showing an error if a message fails to send"""
         try:
             future.result()
         except hangups.NetworkError:
-            print('Failed to send message!')
+            log.info('Failed to send message!')
+
 
     def _on_connect(self, initial_data):
         """Handle connecting for the first time"""
-        print('Connected!')
+        log.info('Connected!')
 
         self._user_list = hangups.UserList(self._client,
                                            initial_data.self_entity,
@@ -280,10 +294,10 @@ class HangoutsBot(object):
 
         self._message_handler = Handlers.MessageHandler(self, command_char=self._command_char)
 
-        print('Conversations:')
+        log.info('Conversations:')
         for c in self.list_conversations():
-            print(('  {} ({})'.format(get_conv_name(c, truncate=True), c.id_)).encode('UTF-8'))
-        print()
+            log.info(('  {} ({})'.format(get_conv_name(c, truncate=True), c.id_)).encode('UTF-8'))
+
 
     def _on_event(self, conv_event):
         """Handle conversation events"""
@@ -294,6 +308,7 @@ class HangoutsBot(object):
         elif isinstance(conv_event, hangups.RenameEvent):
             self.handle_rename(conv_event)
 
+
     def _on_disconnect(self):
         """Handle disconnecting"""
-        print('Connection lost!')
+        log.info('Connection lost!')

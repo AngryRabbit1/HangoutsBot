@@ -1,1 +1,4 @@
 *.pyc
+cookies.txt
+config.json
+database.db

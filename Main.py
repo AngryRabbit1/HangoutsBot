@@ -1,4 +1,6 @@
 import os
+import logging
+
 
 base_config = '''{
   "admins": ["YOUR-USER-ID-HERE"],
@@ -31,18 +33,22 @@ base_config = '''{
   }
 }'''
 
-# TODO Factor in an arg parser.
+
 if __name__ == "__main__":
+    # setup logging
+    logging.basicConfig(level=logging.INFO, format='[ %(asctime)s ][ %(name)s ][ %(levelname)s ] %(message)s')
+    log = logging.getLogger(__name__)
+
     try:
         import nltk
-
-        nltk.data.path.append("nltk_data")  # For Bots that have installed the nltk data in the root project dir.
+		# For Bots that have installed the nltk data in the root project dir.
+        nltk.data.path.append("nltk_data")  
 
         # Keeps our words up to date for the URL summarizer.
         nltk.download("stopwords")
         nltk.download("punkt")
     except ImportError:
-        print("nltk package is not installed. URL Summarizer will not work.")
+        log.info("nltk package is not installed. URL Summarizer will not work.")
 
     command_char = '/'
 
@@ -53,8 +59,8 @@ if __name__ == "__main__":
     elif os.path.isfile("Core" + os.sep + "config.json"):
         HangoutsBot("Core" + os.sep + "cookies.txt", "Core" + os.sep + "config.json", command_char=command_char).run()
     else:
-        print("Error finding config.json file. Creating default config file at Core/config.json")
-        config_file = open("Core" + os.sep + "config.json", 'w+')
+        log.warning("Error finding config.json file. Creating default config file config.json")
+        config_file = open("config.json", 'w+')
         config_file.writelines(base_config)
         config_file.close()
         HangoutsBot("Core" + os.sep + "cookies.txt", "Core" + os.sep + "config.json", command_char=command_char).run()
