@@ -1,5 +1,6 @@
 import os
 import logging
+from Core.Bot import HangoutsBot
 
 
 base_config = '''{
@@ -39,28 +40,24 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='[ %(asctime)s ][ %(name)s ][ %(levelname)s ] %(message)s')
     log = logging.getLogger(__name__)
 
-    try:
-        import nltk
-		# For Bots that have installed the nltk data in the root project dir.
-        nltk.data.path.append("nltk_data")  
-
-        # Keeps our words up to date for the URL summarizer.
-        nltk.download("stopwords")
-        nltk.download("punkt")
-    except ImportError:
-        log.info("nltk package is not installed. URL Summarizer will not work.")
-
-    command_char = '/'
-
-    from Core.Bot import HangoutsBot
-
     if os.path.isfile("config.json"):
-        HangoutsBot("cookies.txt", "config.json", command_char=command_char).run()
+        config_path = 'config.json'
+        cookie_path = 'cookies.txt'
     elif os.path.isfile("Core" + os.sep + "config.json"):
-        HangoutsBot("Core" + os.sep + "cookies.txt", "Core" + os.sep + "config.json", command_char=command_char).run()
+        config_path = "Core" + os.sep + "config.json"
+        cookie_path = "Core" + os.sep + "cookies.txt"
     else:
         log.warning("Error finding config.json file. Creating default config file config.json")
-        config_file = open("config.json", 'w+')
+        config_path = "Core" + os.sep + "config.json"
+        cookie_path = "Core" + os.sep + "cookies.txt"
+        config_file = open(config_path, 'w+')
         config_file.writelines(base_config)
         config_file.close()
-        HangoutsBot("Core" + os.sep + "cookies.txt", "Core" + os.sep + "config.json", command_char=command_char).run()
+
+    # Shut up some of the logging
+    logging.getLogger('hangups.parsers').setLevel(logging.WARNING)
+    logging.getLogger('hangups.http_utils').setLevel(logging.WARNING)
+    logging.getLogger('hangups.conversation').setLevel(logging.WARNING)
+    command_char = '/'
+
+    HangoutsBot(cookie_path, config_path, command_char=command_char).run()

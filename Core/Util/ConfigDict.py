@@ -10,6 +10,7 @@ class ConfigDict(collections.MutableMapping):
         self.config = {}
         self.load()
 
+
     def load(self):
         """Load config from file"""
         try:
@@ -17,22 +18,27 @@ class ConfigDict(collections.MutableMapping):
         except IOError:
             self.config = {}
 
+
     def loads(self, json_str):
         """Load config from JSON string"""
         self.config = json.loads(json_str)
+
 
     def save(self):
         """Save config to file (only if config has changed)"""
         with open(self.filename, 'w') as f:
             json.dump(self.config, f, indent=2, sort_keys=True)
 
+
     def get_by_path(self, keys_list):
         """Get item from config by path (list of keys)"""
         return functools.reduce(lambda d, k: d[k], keys_list, self)
 
+
     def set_by_path(self, keys_list, value):
         """Set item in config by path (list of keys)"""
         self.get_by_path(keys_list[:-1])[keys_list[-1]] = value
+
 
     def __getitem__(self, key):
         try:
@@ -40,14 +46,18 @@ class ConfigDict(collections.MutableMapping):
         except KeyError:
             return self.default
 
+
     def __setitem__(self, key, value):
         self.config[key] = value
+
 
     def __delitem__(self, key):
         del self.config[key]
 
+
     def __iter__(self):
         return iter(self.config)
+
 
     def __len__(self):
         return len(self.config)

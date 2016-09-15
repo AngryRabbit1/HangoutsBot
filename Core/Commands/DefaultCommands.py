@@ -10,11 +10,12 @@ log = logging.getLogger(__name__)
 
 @DispatcherSingleton.register_unknown
 def unknown_command(bot, event, *args):
-	pass
+    log.debug('Unknown command from {}'.format(event.user.full_name, ' '.join(args)))
 
 
 @DispatcherSingleton.register
 def help(bot, event, command=None, *args):
+    log.info('/help from {}: {}'.format(event.user.full_name, ' '.join(args)))
     valid_user_commands = []
     for command_test in sorted(DispatcherSingleton.commands.keys()):
         if UtilBot.check_if_can_run_command(bot, event, command_test):
@@ -108,6 +109,7 @@ def leave(bot, event, conversation=None, *args):
     Usage: /leave
     **Purpose: Leaves the chat room.**
     """
+    log.info('/leave from {}: {}'.format(event.user.full_name, ' '.join(args)))
     convs = []
     if not conversation:
         convs.append(event.conv)
@@ -131,6 +133,7 @@ def mute(bot, event, *args):
     Usage: /mute
     Purposes: Mutes all autoreplies and commands.
     """
+    log.info('/mute from {}: {}'.format(event.user.full_name, ' '.join(args)))
     try:
         bot.config['conversations'][event.conv_id]['autoreplies_enabled'] = False
         bot.config['conversations'][event.conv_id]['commands_enabled'] = False
@@ -149,6 +152,7 @@ def unmute(bot, event, *args):
     Usage: /unmute
     Purpose: Unmutes all autoreplies and commands.
     """
+    log.info('/unmute from {}: {}'.format(event.user.full_name, ' '.join(args)))
     if ''.join(args) == '?':
         segments = [hangups.ChatMessageSegment('Unmute', is_bold=True),
                     hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),

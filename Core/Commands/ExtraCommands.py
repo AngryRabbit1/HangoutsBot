@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 @DispatcherSingleton.register
 def udefine(bot, event, *args):
+    log.info('/udefine from {}: {}'.format(event.user.full_name, ' '.join(args)))
     if ''.join(args) == '?':
         segments = [hangups.ChatMessageSegment('Urbanly Define', is_bold=True),
                     hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
@@ -70,6 +71,7 @@ def udefine(bot, event, *args):
 
 @DispatcherSingleton.register
 def flip(bot, event, *args):
+    log.info('/flip from {}: {}'.format(event.user.full_name, ' '.join(args)))
     if ''.join(args) == '?':
         segments = [hangups.ChatMessageSegment('Flip', is_bold=True),
                     hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
@@ -100,6 +102,7 @@ def flip(bot, event, *args):
 
 @DispatcherSingleton.register
 def quote(bot, event, *args):
+    log.info('/quote from {}: {}'.format(event.user.full_name, ' '.join(args)))
     if ''.join(args) == '?':
         segments = [hangups.ChatMessageSegment('Quote', is_bold=True),
                     hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
@@ -148,6 +151,7 @@ def define(bot, event, *args):
     Usage: /define <word to search for> <start index and end index in form of int:int (e.g., /define test 1:3)>
     Purpose: Show definitions for a word.
     """
+    log.info('/define from {}: {}'.format(event.user.full_name, ' '.join(args)))
     if args[-1].isdigit():
         definition, length = UtilBot.define(' '.join(args[0:-1]), num=int(args[-1]))
         segments = [hangups.ChatMessageSegment(' '.join(args[0:-1]).title(), is_bold=True),
@@ -221,6 +225,7 @@ def vote(bot, event, set_vote=None, *args):
     Usage: /vote start admin (used to start a vote for a new conversation admin)
     """
 
+    log.info('/vote from {}: {}'.format(event.user.full_name, ' '.join(args)))
     # Abstains user from voting.
     if set_vote is not None and set_vote.lower() == 'abstain':
         if UtilBot.is_vote_started(event.conv_id):

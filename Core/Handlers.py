@@ -9,7 +9,7 @@ import hangups
 
 from Core.Commands.Dispatcher import DispatcherSingleton
 from Core.Commands import *  # Makes sure that all commands in the Command directory are imported and registered.
-from Core.Util.UtilBot import is_user_blocked, check_if_can_run_command
+from Core.Util.UtilBot import check_if_can_run_command
 
 
 log = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class MessageHandler(object):
 
     @asyncio.coroutine
     def handle(self, event):
-        if event.user.is_self or is_user_blocked(event.conv_id, event.user_id):
+        if event.user.is_self:
             return
         try:
             muted = not self.bot.config['conversations'][event.conv_id]['autoreplies_enabled']

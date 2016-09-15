@@ -18,7 +18,7 @@ from hangups.ui.utils import get_conv_name
 from requests import HTTPError
 
 from Core.Commands.Dispatcher import DispatcherSingleton
-from Core.Util import ConfigDict, UtilDB
+from Core.Util import ConfigDict
 from Core import Handlers
 
 
@@ -69,9 +69,6 @@ class HangoutsBot(object):
         # Load config file
         self.config = ConfigDict.ConfigDict(config_path)
         self.devmode = self.get_config_suboption('', 'development_mode')
-
-        self.database = "database.db"
-        UtilDB.setDatabase(self.database)
 
         # Handle signals on Unix
         # (add_signal_handler is not implemented on Windows)
