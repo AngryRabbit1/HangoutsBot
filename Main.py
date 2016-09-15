@@ -40,6 +40,8 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='[ %(asctime)s ][ %(name)s ][ %(levelname)s ] %(message)s')
     log = logging.getLogger(__name__)
 
+    # setup config
+    # todo: switch to configargparse
     if os.path.isfile("config.json"):
         config_path = 'config.json'
         cookie_path = 'cookies.txt'
@@ -54,10 +56,18 @@ if __name__ == "__main__":
         config_file.writelines(base_config)
         config_file.close()
 
-    # Shut up some of the logging
+    # Shut up some of the logging cause of the spamming
     logging.getLogger('hangups.parsers').setLevel(logging.WARNING)
     logging.getLogger('hangups.http_utils').setLevel(logging.WARNING)
     logging.getLogger('hangups.conversation').setLevel(logging.WARNING)
+    logging.getLogger('hangups.auth').setLevel(logging.WARNING)
+    logging.getLogger('requests.packages.urllib3.connectionpool').setLevel(logging.WARNING)
+    logging.getLogger('hangups.client').setLevel(logging.WARNING)
+    logging.getLogger('hangups.channel').setLevel(logging.WARNING)
+    logging.getLogger('root').setLevel(logging.WARNING)
+    logging.getLogger('hangups.user').setLevel(logging.WARNING)
+    logging.getLogger('root').setLevel(logging.WARNING)
     command_char = '/'
 
+    # start the bot
     HangoutsBot(cookie_path, config_path, command_char=command_char).run()
