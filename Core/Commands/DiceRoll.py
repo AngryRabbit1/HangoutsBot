@@ -2,6 +2,7 @@ import random
 import hangups
 from Core.Commands.Dispatcher import DispatcherSingleton
 import logging
+import re
 
 
 log = logging.getLogger(__name__)
@@ -14,63 +15,46 @@ def roll(bot, event, *args):
     Usage: /roll: Roll one 6 sided dice
     Usage: /roll <number>: Roll <number> dice with 6 sides
     Usage: /roll <number1>d<number2>: Roll <number1> dice with <number2> sides
+    Usage: /roll <number1>d<number2>+<number3>: Roll <number1> dice with <number2> sides and add <number3>
     """
     log.info('/roll from {}: {}'.format(event.user.full_name, ' '.join(args)))
     dice_max = 100
 
-    if len(args) <= 1:
-        str_dice = ''
-        str_sides = ''
-        list_args = args if len(args) == 0 else args[0].split('d')
+    user = ' '.join(args)
+    p1 = re.compile('^\s*(\d+)\s*\+?\s*(\d*)\s*$', re.IGNORECASE)
+    p2 = re.compile('^\s*d\s*(\d+)\s*\+?\s*(\d*)\s*$', re.IGNORECASE)
+    p3 = re.compile('^\s*(\d+)\s*d\s*(\d+)\s*\+?\s*(\d*)\s*$', re.IGNORECASE)
+    s1 = p1.search(user)
+    s2 = p2.search(user)
+    s3 = p3.search(user)
 
-        if len(args) == 0:
-            str_sides = 6
-            str_dice = 1
-        elif len(list_args) == 1:
-            str_sides = 6
-            str_dice = list_args[0]
-        elif len(list_args) == 2:
-            str_sides = list_args[1]
-            if list_args[0] == '':
-                str_dice = 1
-            else:
-                str_dice = list_args[0]
-        else:
-            response = 'Too many arguments sent.'
-            bot.send_message(event.conv, response)
-            return
-
-        try:
-            num_dice = int(str_dice)
-            num_sides = int(str_sides)
-        except:
-            warn_text = 'Not a valid integer.'
-            bot.send_message(event.conv, warn_text)
-            return
-
-        if num_dice > dice_max:
-            response = "Can't roll more than 100 dice."
-
-        elif num_sides == 1:
-            response = "Can't roll a 1-sided dice."
-
-        elif num_dice > 0 and num_sides > 0:
-            random.seed()
-            dice_rolls = [random.randint(1, num_sides) for i in range(num_dice)]
-            dice_sum = sum(dice_rolls)
-            roll_desc = '{}d{}'.format(num_dice, num_sides)
-
-            if num_dice == 1:
-                response = '{} rolled: {}'.format(roll_desc, str(dice_rolls[0]))
-            else:
-                response = '{} rolled: {} = {}'.format(roll_desc, ', '.join([str(i) for i in dice_rolls]), dice_sum)
-
-        else:
-            response = 'Numbers must be larger than 0.'
-
-        bot.send_message(event.conv, response)
-
+    if len(args) == 0:
+        num_dice = 1
+        num_sides = 6
+        num_add = 0
+    elif s1:
+        num_dice = int(s1.group(1))
+        num_sides = 6
+        num_add = 0 if s1.group(2) == '' else int(s1.group(2))
+    elif s2:
+        num_dice = 1
+        num_sides = int(s2.group(1))
+        num_add = 0 if s2.group(2) == '' else int(s2.group(2))
+    elif s3:
+        num_dice = int(s3.group(1))
+        num_sides = int(s3.group(2))
+        num_add = 0 if s3.group(3) == '' else int(s3.group(3))
     else:
-        response = 'Too many arguments sent.'
-        bot.send_message(event.conv, response)
         return
+
+    num_dice = num_dice if num_dice <= dice_max else 0
+    random.seed()
+    dice_rolls = [random.randint(1, num_sides) for i in range(num_dice)]
+    dice_sum = sum(dice_rolls) + num_add
+    if num_add == 0:
+        roll_desc = '{}d{}'.format(num_dice, num_sides)
+    else:
+        roll_desc = '{}d{}+{}'.format(num_dice, num_sides, num_add)
+
+    response = '{} rolled: {} = {}'.format(roll_desc, ', '.join([str(i) for i in dice_rolls]), dice_sum)
+    bot.send_message(event.conv, response)
