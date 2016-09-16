@@ -20,13 +20,16 @@ def help(bot, event, command=None, *args):
     for command_test in sorted(DispatcherSingleton.commands.keys()):
         if UtilBot.check_if_can_run_command(bot, event, command_test):
             valid_user_commands.append(command_test)
-    docstring = """
-    **Current Implemented Commands:**
-    {}
-    Use: /<command name> ? or /help <command name> to find more information about the command.
-    """.format(', '.join(valid_user_commands))
+
+    segments = [hangups.ChatMessageSegment('Available Commands:', is_bold=True),
+                hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
+                hangups.ChatMessageSegment(', '.join(valid_user_commands)),
+                hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
+                hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
+                hangups.ChatMessageSegment('Use: /<command> ? or /help <command> to get more info.')]
+
     if command == '?' or command is None:
-        bot.send_message_segments(event.conv, UtilBot.text_to_segments(docstring))
+        bot.send_message_segments(event.conv, segments)
     else:
         if command in DispatcherSingleton.commands.keys():
             func = DispatcherSingleton.commands[command]
