@@ -5,14 +5,103 @@ from urllib import request
 from bs4 import BeautifulSoup, Tag
 import re
 import hangups
+import configargparse
+from peewee import MySQLDatabase, InsertQuery
+from queue import Queue
+import logging
+import time
 
 
-# For the /vote command.
-_vote_subject = {}
-_voted_tally = {}
-_vote_callbacks = {}
-
+log = logging.getLogger(__name__)
 _url_regex = r"^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$"
+
+
+def memoize(function):
+    memo = {}
+
+    def wrapper(*args):
+        if args in memo:
+            return memo[args]
+        else:
+            rv = function(*args)
+            memo[args] = rv
+            return rv
+    return wrapper
+
+
+@memoize
+def get_args():
+    configpath = os.path.join(os.path.dirname(__file__), '../config.ini')
+    parser = configargparse.ArgParser(default_config_files=[configpath])
+
+    parser.add_argument('--db-name', help='Name of the database to be used')
+    parser.add_argument('--db-user', help='Username for the database')
+    parser.add_argument('--db-pass', help='Password for the database')
+    parser.add_argument('--db-host', help='IP or hostname for the database')
+    parser.add_argument('--db-port', help='Port for the database', type=int, default=3306)
+
+    args = parser.parse_args()
+    return args
+
+
+args = get_args()
+db_updates_queue = Queue()
+db = MySQLDatabase(args.db_name, user=args.db_user, password=args.db_pass, host=args.db_host, port=args.db_port)
+
+
+def init_database():
+    log.info('Connecting to MySQL database on %s:%i', args.db_host, args.db_port)
+    global db
+    global db_updates_queue
+
+    while True:
+        try:
+            db.connect()
+            break
+        except Exception as e:
+            log.warning('%s... Retrying', e)
+            time.sleep(1)
+
+    db.close()
+    return [db, db_updates_queue]
+
+
+def db_updater(db, db_updates_queue):
+    # The forever loop
+    while True:
+        try:
+            # Loop the queue
+            while True:
+                # Connect to the database
+                while True:
+                    try:
+                        db.connect()
+                        break
+                    except Exception as e:
+                        log.warning('%s... Retrying', e)
+                        time.sleep(1)
+                # Process queue
+                model, data = db_updates_queue.get()
+                bulk_upsert(model, data)
+                db_updates_queue.task_done()
+                db.close()
+
+                if db_updates_queue.qsize() > 50:
+                    log.warning("DB queue is > 50 (@%d); try increasing --db-threads", db_updates_queue.qsize())
+
+        except Exception as e:
+            log.exception('Exception in db_updater: %s', e)
+
+
+def bulk_upsert(cls, data):
+    while True:
+        try:
+            InsertQuery(cls, rows=data.values()).upsert().execute()
+        except Exception as e:
+            log.warning('%s... Retrying', e)
+            continue
+
+        break
 
 
 def is_user_conv_admin(bot, user_info, conv_id=None):
@@ -76,108 +165,6 @@ def check_if_can_run_command(bot, event, command):
         if not admins_list or event.user_id[0] not in admins_list:
             return False
     return True
-
-
-def get_vote_subject(conv_id):
-    if conv_id in _vote_subject:
-        return _vote_subject[conv_id]
-    return None
-
-
-# userlist is a array of User objects, not an array of names.
-def init_new_vote(conv_id, userlist):
-    _voted_tally[conv_id] = {}
-    _vote_callbacks[conv_id] = None
-    for user in userlist:
-        if not user.is_self:
-            _voted_tally[conv_id][user.full_name] = None
-
-
-def set_vote_subject(conv_id, subject):
-    _vote_subject[conv_id] = subject.strip()
-
-
-def set_vote(conv_id, username, vote):
-    if conv_id not in _voted_tally:
-        _voted_tally[conv_id] = {}
-    _voted_tally[conv_id][username] = vote
-
-
-def abstain_voter(conv_id, username):
-    if username in _voted_tally[conv_id]:
-        del _voted_tally[conv_id][username]
-    if len(_voted_tally[conv_id]) == 0:
-        end_vote(conv_id)
-        return True
-
-
-def get_vote_status(conv_id):
-    results = ["**Vote Status for {}:**".format(get_vote_subject(conv_id))]
-    for person in _voted_tally[conv_id]:
-        results.append(person + ' : ' + str(get_vote(conv_id, person)))
-
-    return results
-
-
-def get_vote(conv_id, username):
-    if is_vote_started(conv_id):
-        try:
-            return _voted_tally[conv_id][username]
-        except KeyError:
-            return None
-
-
-def check_if_vote_finished(conv_id):
-    voted = _voted_tally[conv_id]
-    true_count = list(voted.values()).count(True)
-    false_count = list(voted.values()).count(False)
-    total = len(voted.values())
-    if total == 0:
-        return None
-    if float(true_count) / float(total) > .5:
-        for key in voted.keys():
-            voted[key] = True
-    elif float(false_count) / float(total) > .5:
-        for key in voted.keys():
-            voted[key] = False
-    if not (None in voted.values()):
-        yeas = 0
-        nahs = 0
-        for tallied_vote in voted.values():
-            if tallied_vote:
-                yeas += 1
-            else:
-                nahs += 1
-        return yeas - nahs
-    else:
-        return None
-
-
-def set_vote_callback(conv_id, callback):
-    _vote_callbacks[conv_id] = callback
-
-
-def can_user_vote(conv_id, user):
-    try:
-        is_voting = user.full_name in _voted_tally[conv_id]
-        return is_voting
-    except KeyError:
-        return False
-
-
-def is_vote_started(conv_id):
-    try:
-        return _vote_subject[conv_id] is not None and _voted_tally[conv_id] is not None
-    except KeyError:
-        return False
-
-
-def end_vote(conv_id, vote_result=False):
-    if vote_result and _vote_callbacks[conv_id] is not None:
-        _vote_callbacks[conv_id]()
-    del _voted_tally[conv_id]
-    _vote_subject[conv_id] = None
-    del _vote_callbacks[conv_id]
 
 
 def find_private_conversation(conv_list, user_id, default=None):

@@ -1,6 +1,8 @@
 import os
 import logging
 from Core.Bot import HangoutsBot
+from Core.Util.UtilBot import get_args, init_database, db_updater
+from threading import Thread
 
 
 base_config = '''{
@@ -36,9 +38,18 @@ base_config = '''{
 
 
 if __name__ == "__main__":
+    args = get_args()
+
     # setup logging
     logging.basicConfig(level=logging.INFO, format='[ %(asctime)s ][ %(name)s ][ %(levelname)s ] %(message)s')
     log = logging.getLogger(__name__)
+
+    # setup database
+    log.debug('Starting db-updater worker thread')
+    db, db_updates_queue = init_database()
+    t = Thread(target=db_updater, name='db-updater', args=(db, db_updates_queue))
+    t.daemon = True
+    t.start()
 
     # setup config
     # todo: switch to configargparse

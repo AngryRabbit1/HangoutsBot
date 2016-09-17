@@ -50,7 +50,7 @@ def rename(bot, event, *args):
     yield from bot._client.setchatname(event.conv_id, ' '.join(args))
 
 
-@DispatcherSingleton.register_hidden
+@DispatcherSingleton.register
 def users(bot, event, *args):
     """
     **Users:**
