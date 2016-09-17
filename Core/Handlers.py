@@ -8,7 +8,7 @@ import re
 import hangups
 
 from Core.Commands.Dispatcher import DispatcherSingleton
-from Core.Commands import *  # Makes sure that all commands in the Command directory are imported and registered.
+from Core.Commands import DefaultCommands, ExtraCommands, DiceRoll, ImageSearch, MagicBall, TextEmote
 from Core.Util.UtilBot import check_if_can_run_command
 
 

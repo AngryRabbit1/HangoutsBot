@@ -191,7 +191,7 @@ def define(word, num=1):
         print(e)
         return 'Couldn\'t download definition.'
     try:
-        soup = BeautifulSoup(request.urlopen(url))
+        soup = BeautifulSoup(request.urlopen(url), "html.parser")
     except:
         return "Network Error: Couldn't download definition.", 0
     if soup.ul is not None:

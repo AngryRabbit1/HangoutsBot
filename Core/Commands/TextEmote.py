@@ -74,9 +74,15 @@ def em(bot, event, *args):
     elif str(args[0]).lower() == 'list':
         em_list(bot, event)
     elif str(args[0]).lower() == 'add':
-        emote_name = args[1]
-        emote_string = ' '.join(args[2:])
-        em_add(bot, event, emote_name, emote_string)
+        if len(args) < 3:
+            bot.send_message(event.conv, 'Not enough inputs, expected 4.')
+        else:
+            emote_name = args[1]
+            emote_string = ' '.join(args[2:])
+            if emote_name == 'list' or emote_name == 'add':
+                bot.send_message(event.conv, 'Cannot name an emote "list" or "add".')
+            else:
+                em_add(bot, event, emote_name, emote_string)
     else:
         emote_name = ' '.join(args)
         emotes = get_emotes(emote_name)
