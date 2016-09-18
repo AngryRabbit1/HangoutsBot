@@ -7,10 +7,19 @@ import logging
 import asyncio
 import hangups
 from Core.Commands.Dispatcher import DispatcherSingleton
+import random
 
 
 log = logging.getLogger(__name__)
 headers = {"user-agent": "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:47.0) Gecko/20100101 Firefox/47.0"}
+
+random_for = (
+    'cat',
+    'cats',
+    'kitty',
+    'dog',
+    'puppy'
+    )
 
 
 @DispatcherSingleton.register
@@ -24,7 +33,13 @@ def img(bot, event, *args):
     global headers
 
     query = ' '.join(args)
-    url = 'https://www.bing.com/images/async?{}&async=content&first=1'.format(parse.urlencode({'q': query}))
+    if query.lower() in random_for:
+        random.seed()
+        first = randint(2, 1000000)
+    else:
+        first = 2
+
+    url = 'https://www.bing.com/images/async?{}&async=content&first={}'.format(parse.urlencode({'q': query}), first)
     response = requests.get(url, headers)
     if response.status_code != 200:
         log.error('Error searching for image')
@@ -32,12 +47,13 @@ def img(bot, event, *args):
 
     result = response.content.decode()
     soup = BeautifulSoup(result, "html.parser")
-    imgs = soup.find_all("a")
+    imgs = soup.find_all("a", title="View image details")
 
-    if len(imgs) <= 2:
+    if len(imgs) == 0:
         bot.send_message(event.conv, 'No images found for "{}"'.format(query))
     else:
-        a = imgs[0]['m']
+        i = random.randint(0, len(imgs) - 1)
+        a = imgs[i]['m']
         b = a.split('imgurl:"')
         c = b[1].split('"')
         url = c[0]
