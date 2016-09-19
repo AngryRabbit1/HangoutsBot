@@ -1,0 +1,5 @@
+git+https://github.com/tdryer/hangups.git#egg=hangups
+peewee==2.8.3
+beautifulsoup4==4.5.1
+ConfigArgParse==0.9.3
+requests==2.11.1

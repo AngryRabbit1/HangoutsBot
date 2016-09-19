@@ -34,7 +34,7 @@ def join_game(bot, event, user):
 
     for p in players:
         if p[0] == user_id:
-            bot.send_message(event.conv, '{}, you are already in the game.'.format(user_name))
+            bot.send_message(p[2], '{}, you are already in the game.'.format(user_name))
             return
 
     conv_found = False
@@ -48,6 +48,7 @@ def join_game(bot, event, user):
     if conv_found:
         players.append([user_id, user_name, c, ''])
         bot.send_message(event.conv, '{} has joined the game.'.format(user_name))
+        bot.send_message(c, 'You have joined the game. You will use this chat to send your guess when it is your turn. Please keep this chat open until the game is finished.')
     else:
         bot.send_message(event.conv, 'No private chat found. Please start a private chat and try joining again.')
 
@@ -131,6 +132,7 @@ def imggame(bot, event, *args):
                     game_state = 2
                     players.sort(key=lambda x: random.random())
                     bot.send_message(event.conv, "The game is afoot. The first player is {}. Send your search term in the private chat.".format(players[game_state - 2][1]))
+                    bot.send_message(players[game_state - 2][2], 'You are the first player. Use "/imggame <search term>" to submit the first image.')
                 else:
                     bot.send_message(event.conv, "Can't start a game with less than 2 players.")
             else:
@@ -185,7 +187,11 @@ def imggame(bot, event, *args):
                     else:
                         first = 2
 
-                    success = yield from send_image(bot, main_conv, "Guess made by {}.".format(players[game_state - 2][1]), players[game_state - 2][2], first, query)
+                    if game_state == 2:
+                        success = yield from send_image(bot, main_conv, "Guess made by {}.".format(players[game_state - 2][1]), players[game_state - 2][2], first, query)
+                    else:
+                        success = yield from send_image(bot, main_conv, "First image submitted by {}.".format(players[game_state - 2][1]), players[game_state - 2][2], first, query)
+
                     if success:
                         players[game_state - 2][3] = query
                         if len(players) <= game_state - 1:
@@ -202,6 +208,7 @@ def imggame(bot, event, *args):
                         else:
                             game_state += 1
                             bot.send_message(main_conv, 'Next player is {}.'.format(players[game_state - 2][1]))
+                            bot.send_message(players[game_state - 2][2], 'It is your turn. Use "/imggame <search term>" to submit a guess on the previous image.'.format(players[game_state - 2][1]))
                 else:
                     bot.send_message(event.conv, 'You must send your guess in the private chat.')
             else:
