@@ -8,7 +8,8 @@ import re
 import hangups
 
 from Core.Commands.Dispatcher import DispatcherSingleton
-from Core.Commands import DefaultCommands, ExtraCommands, DiceRoll, ImageSearch, MagicBall, TextEmote, ImageGame
+from Core.Commands import DefaultCommands, ExtraCommands, DiceRoll, CannedResponses
+from Core.Commands import ImageSearch, MagicBall, TextEmote, ImageGame
 from Core.Util.UtilBot import check_if_can_run_command
 
 

@@ -40,35 +40,47 @@ def img(bot, event, *args):
     else:
         first = 2
 
-    yield from send_image(bot, event.conv, "Picture Message", event.conv, first, query)
+    img_url = yield from get_url(bot, event.conv, first, query)
+    if img_url:
+        yield from send_image(bot, event.conv, "Picture Message", event.conv, img_url)
 
 
 @asyncio.coroutine
-def send_image(bot, conv, msg, err_conv, first, query):
-    url = 'https://www.bing.com/images/async?{}&async=content&first={}'.format(parse.urlencode({'q': query}), first)
-    response = requests.get(url, headers)
-    if response.status_code != 200:
-        bot.send_message(err_conv, 'Connection error while searching for image'.format(query))
-        return False
-
-    result = response.content.decode()
-    soup = BeautifulSoup(result, "html.parser")
-    imgs = soup.find_all("a", title="View image details")
-
-    if len(imgs) == 0:
-        bot.send_message(err_conv, 'No images found for "{}"'.format(query))
-        return False
-    else:
-        i = random.randint(0, len(imgs) - 1)
-        a = imgs[i]['m']
-        b = a.split('imgurl:"')
-        c = b[1].split('"')
-        url = c[0]
-
+def get_url(bot, err_conv, first, query):
     try:
-        image_id = yield from bot.upload_image(url)
+        url = 'https://www.bing.com/images/async?{}&async=content&first={}'.format(parse.urlencode({'q': query}), first)
+        response = requests.get(url, headers)
+        if response.status_code != 200:
+            bot.send_message(err_conv, 'Connection error while searching for image'.format(query))
+            return False
+
+        result = response.content.decode()
+        soup = BeautifulSoup(result, "html.parser")
+        imgs = soup.find_all("a", title="View image details")
+
+        if len(imgs) == 0:
+            bot.send_message(err_conv, 'No images found for "{}"'.format(query))
+            return False
+        else:
+            i = random.randint(0, len(imgs) - 1)
+            a = imgs[i]['m']
+            b = a.split('imgurl:"')
+            c = b[1].split('"')
+            img_url = c[0]
+    except:
+        bot.send_message(err_conv, 'Error searching for image.')
+        return None
+
+    return img_url
+
+
+@asyncio.coroutine
+def send_image(bot, conv, msg, err_conv, img_url):
+    try:
+        image_id = yield from bot.upload_image(img_url)
     except HTTPError:
-        bot.send_message(err_conv, 'Error downloading image'.format(query))
+        bot.send_message(err_conv, 'Error downloading image.')
         return False
+
     bot.send_message_segments(conv, [hangups.ChatMessageSegment(msg)], image_id=image_id)
     return True

@@ -114,12 +114,8 @@ class HangoutsBot(object):
                     sys.exit(0)
                 except Exception as e:
                     log.info('Client unexpectedly disconnected:\n{}'.format(e))
-                    log = open('log.txt', 'a+')
-                    log.writelines(str(datetime.now()) + ":\n " + traceback.format_exc() + "\n\n")
-                    log.close()
                     log.info(traceback.format_exc())
                     time.sleep(10)
-            log.info('Maximum number of retries reached! Exiting...')
         sys.exit(1)
 
 

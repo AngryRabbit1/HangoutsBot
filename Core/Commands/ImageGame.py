@@ -4,7 +4,7 @@ import logging
 import hangups
 from Core.Commands.Dispatcher import DispatcherSingleton
 import random
-from .ImageSearch import send_image
+from .ImageSearch import send_image, get_url
 
 
 log = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ random_for = (
 game_state = 0
 main_conv = None
 main_conv_id = None
-# 0 = player id, 1 = player name, 2 = player conv, 3 = player guess
+# 0 = player id, 1 = player name, 2 = player conv, 3 = player guess, 4 = img url
 players = []
 
 
@@ -46,7 +46,7 @@ def join_game(bot, event, user):
                 break
 
     if conv_found:
-        players.append([user_id, user_name, c, ''])
+        players.append([user_id, user_name, c, '', ''])
         bot.send_message(event.conv, '{} has joined the game.'.format(user_name))
         bot.send_message(c, 'You have joined the game. You will use this chat to send your guess when it is your turn. Please keep this chat open until the game is finished.')
     else:
@@ -77,11 +77,15 @@ def imggame(bot, event, *args):
     elif args[0].lower() == 'rules' and len(args) == 1:
         segments = [hangups.ChatMessageSegment('Image Game Rules', is_bold=True),
                     hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
+                    hangups.ChatMessageSegment('This game is similar to telephone.'),
+                    hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
                     hangups.ChatMessageSegment('A randomly chosen player will send an /imggame <search term> command in a private chat to the bot.'),
                     hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
-                    hangups.ChatMessageSegment('The result of that search will be sent to the main chat.'),
+                    hangups.ChatMessageSegment('A random image of that search will be sent to the main chat.'),
                     hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
-                    hangups.ChatMessageSegment('Once all players have made a guess, the full list of search terms will be printed.')]
+                    hangups.ChatMessageSegment('Each subsequent player will guess what search the previous person used, the full list of search terms will be printed.'),
+                    hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK),
+                    hangups.ChatMessageSegment('After every player has made a guess, the full list of search terms will be printed.')]
         bot.send_message_segments(event.conv, segments)
 
     # begin a new game
@@ -131,7 +135,7 @@ def imggame(bot, event, *args):
                 if len(players) >= 2:
                     game_state = 2
                     players.sort(key=lambda x: random.random())
-                    bot.send_message(event.conv, "The game is afoot. The first player is {}. Send your search term in the private chat.".format(players[game_state - 2][1]))
+                    bot.send_message(event.conv, "The game has been started with {} players. The first player is {}. Send your search term in the private chat.".format(len(players), players[game_state - 2][1]))
                     bot.send_message(players[game_state - 2][2], 'You are the first player. Use "/imggame <search term>" to submit the first image.')
                 else:
                     bot.send_message(event.conv, "Can't start a game with less than 2 players.")
@@ -152,10 +156,6 @@ def imggame(bot, event, *args):
         elif game_state >= 1:
             if event.conv_id == main_conv_id:
                 segments = [hangups.ChatMessageSegment('Game has been stopped before the end:', is_bold=True)]
-                for p in players:
-                    segments.append(hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK))
-                    segments.append(hangups.ChatMessageSegment('{}: {}'.format(p[1], p[3])))
-                bot.send_message_segments(main_conv, segments)
                 game_state = 0
                 main_conv = None
                 main_conv_id = None
@@ -187,28 +187,32 @@ def imggame(bot, event, *args):
                     else:
                         first = 2
 
-                    if game_state == 2:
-                        success = yield from send_image(bot, main_conv, "Guess made by {}.".format(players[game_state - 2][1]), players[game_state - 2][2], first, query)
-                    else:
-                        success = yield from send_image(bot, main_conv, "First image submitted by {}.".format(players[game_state - 2][1]), players[game_state - 2][2], first, query)
-
-                    if success:
-                        players[game_state - 2][3] = query
-                        if len(players) <= game_state - 1:
-                            segments = [hangups.ChatMessageSegment('Game has ended:', is_bold=True)]
-                            for p in players:
-                                segments.append(hangups.ChatMessageSegment('\n', hangups.SegmentType.LINE_BREAK))
-                                segments.append(hangups.ChatMessageSegment('{}: {}'.format(p[1], p[3])))
-
-                            bot.send_message_segments(main_conv, segments)
-                            game_state = 0
-                            main_conv = None
-                            main_conv_id = None
-                            players = []
+                    img_url = yield from get_url(bot, players[game_state - 2][2], first, query)
+                    if img_url:
+                        if game_state >= len(players) + 1:
+                            img_sent = yield from send_image(bot, players[game_state - 2][2], 'Image from {}'.format(players[game_state - 2][1]), players[game_state - 2][2], img_url)
                         else:
-                            game_state += 1
-                            bot.send_message(main_conv, 'Next player is {}.'.format(players[game_state - 2][1]))
-                            bot.send_message(players[game_state - 2][2], 'It is your turn. Use "/imggame <search term>" to submit a guess on the previous image.'.format(players[game_state - 2][1]))
+                            img_sent = yield from send_image(bot, players[game_state - 2 + 1][2], 'Image from {}'.format(players[game_state - 2][1]), players[game_state - 2][2], img_url)
+
+                        if img_sent:
+                            players[game_state - 2][3] = query
+                            players[game_state - 2][4] = img_url
+
+                            if len(players) <= game_state - 1:
+                                segments = [hangups.ChatMessageSegment('Game has ended', is_bold=True)]
+                                bot.send_message_segments(main_conv, segments)
+
+                                for i, p in enumerate(players):
+                                    yield from send_image(bot, main_conv, '{}: {}'.format(p[1], p[3]), main_conv, p[4])
+
+                                game_state = 0
+                                main_conv = None
+                                main_conv_id = None
+                                players = []
+                            else:
+                                game_state += 1
+                                bot.send_message(main_conv, 'Next player is {}.'.format(players[game_state - 2][1]))
+                                bot.send_message(players[game_state - 2][2], 'It is your turn. Use "/imggame <search term>" to submit a guess on the previous image.'.format(players[game_state - 2][1]))
                 else:
                     bot.send_message(event.conv, 'You must send your guess in the private chat.')
             else:
