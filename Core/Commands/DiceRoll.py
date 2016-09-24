@@ -6,6 +6,7 @@ import re
 
 
 log = logging.getLogger(__name__)
+dice_max = 100
 
 
 @DispatcherSingleton.register
@@ -18,7 +19,7 @@ def roll(bot, event, *args):
     Usage: /roll <number1>d<number2>+<number3>: Roll <number1> dice with <number2> sides and add <number3>
     """
     log.info('/roll from {}: {}'.format(event.user.full_name, ' '.join(args)))
-    dice_max = 100
+    global dice_max
 
     user = ' '.join(args)
     p1 = re.compile('^\s*(\d+)\s*\+?\s*(\d*)\s*$', re.IGNORECASE)
@@ -48,8 +49,7 @@ def roll(bot, event, *args):
         return
 
     num_dice = num_dice if num_dice <= dice_max else 0
-    random.seed()
-    dice_rolls = [random.randint(1, num_sides) for i in range(num_dice)]
+    dice_rolls = roll_dice(num_dice, num_sides)
     dice_sum = sum(dice_rolls) + num_add
     if num_add == 0:
         roll_desc = '{}d{}'.format(num_dice, num_sides)
@@ -58,3 +58,9 @@ def roll(bot, event, *args):
 
     response = '{} rolled: {} = {}'.format(roll_desc, ', '.join([str(i) for i in dice_rolls]), dice_sum)
     bot.send_message(event.conv, response)
+
+
+def roll_dice(num_dice, num_sides):
+    random.seed()
+    dice_rolls = [random.randint(1, num_sides) for i in range(num_dice)]
+    return dice_rolls

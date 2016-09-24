@@ -155,7 +155,7 @@ def imggame(bot, event, *args):
             bot.send_message(event.conv, 'There is no game in progress. Use "/imggame new" to begin a game.')
         elif game_state >= 1:
             if event.conv_id == main_conv_id:
-                segments = [hangups.ChatMessageSegment('Game has been stopped before the end:', is_bold=True)]
+                bot.send_message(event.conv, 'Game has been stopped before the end.')
                 game_state = 0
                 main_conv = None
                 main_conv_id = None
